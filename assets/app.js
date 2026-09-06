@@ -889,10 +889,11 @@ canvas.addEventListener("wheel", function(e){
 /* ---- ポインタ操作（パン・カードドラッグ・ピンチ） ---- */
 const ptrs = new Map();
 let mode = null, dragId = null, dragStart = null, moved = false, pinch = null;
+let tapId = null, threshold = 4;
 
 canvas.addEventListener("pointerdown", function(e){
   if(e.button !== 0 && e.button !== 1) return;
-  canvas.setPointerCapture(e.pointerId);
+  try{ canvas.setPointerCapture(e.pointerId); }catch(err){}
   ptrs.set(e.pointerId, { x:e.clientX, y:e.clientY });
   if(ptrs.size === 2){
     const a = Array.from(ptrs.values());
@@ -902,13 +903,19 @@ canvas.addEventListener("pointerdown", function(e){
   }
   const card = e.target.closest ? e.target.closest(".node") : null;
   moved = false;
-  if(card && e.button === 0){
+  tapId = null;
+  /* 指の震えでカードが動かないよう、タッチはしきい値を広めに取る */
+  threshold = e.pointerType === "touch" ? 10 : 4;
+  /* カードを動かせるのは、その人物を選択しているときだけ。
+     未選択のカードを触った場合は画面のパンとして扱い、指を離した位置で選択する。 */
+  if(card && e.button === 0 && card.dataset.id === S.sel){
     mode = "drag"; dragId = card.dataset.id;
     const q = S.pos[dragId] || {x:0,y:0};
     dragStart = { mx:e.clientX, my:e.clientY, ox:q.x, oy:q.y, el:card };
     card.classList.add("drag");
   }else{
     mode = "pan"; canvas.classList.add("panning");
+    tapId = card ? card.dataset.id : null;
     dragStart = { mx:e.clientX, my:e.clientY, ox:S.view.x, oy:S.view.y };
   }
 });
@@ -928,7 +935,7 @@ canvas.addEventListener("pointermove", function(e){
   }
   if(!dragStart) return;
   const dx = e.clientX-dragStart.mx, dy = e.clientY-dragStart.my;
-  if(!moved && Math.abs(dx)+Math.abs(dy) > 4) moved = true;
+  if(!moved && Math.abs(dx)+Math.abs(dy) > threshold) moved = true;
   if(!moved) return;
   if(mode === "pan"){
     S.view.x = dragStart.ox + dx; S.view.y = dragStart.oy + dy; applyView();
@@ -944,14 +951,17 @@ function endPointer(e){
   if(mode === "pinch" && ptrs.size < 2){ mode = null; pinch = null; dragStart = null; saveSoon(); return; }
   if(mode === "drag" && dragId){
     const c = dragStart && dragStart.el; if(c) c.classList.remove("drag");
-    if(!moved) select(dragId === S.sel ? null : dragId);
+    if(!moved) select(null);   /* 選択中のカードをタップ＝選択を外す */
     else { save(); toast("配置を手動で変更しました。「自動整列」で元の並びに戻せます"); }
   }else if(mode === "pan"){
     canvas.classList.remove("panning");
-    if(!moved && S.sel) select(null);
+    if(!moved){
+      if(tapId) select(tapId);
+      else if(S.sel) select(null);
+    }
     saveSoon();
   }
-  mode = null; dragId = null; dragStart = null;
+  mode = null; dragId = null; dragStart = null; tapId = null;
 }
 canvas.addEventListener("pointerup", endPointer);
 canvas.addEventListener("pointercancel", endPointer);
@@ -1107,8 +1117,9 @@ function paneDetail(){
       '<div><b>'+stats.unions+'</b><span>婚姻</span></div></div>'+
       '<div class="blank">カードをクリックすると、<br>その人物から見た<b>親等</b>が<br>周囲のカードに表示されます。</div>'+
       '<div class="sect"><h3>操作</h3><p class="note">'+
-      'ドラッグ＝移動　ホイール＝拡大縮小<br>' +
-      'カードをドラッグ＝個別に配置　ダブルクリック＝編集<br>' +
+      'ドラッグ＝画面の移動　ホイール／ピンチ＝拡大縮小<br>' +
+      'カードは<b>選択してから</b>ドラッグすると個別に動かせます<br>' +
+      'ダブルクリック（ダブルタップ）＝編集<br>' +
       '<code>+</code> <code>-</code> 拡大縮小　<code>0</code> 全体表示　<code>F</code> 自動整列</p></div>';
     return;
   }

@@ -106,12 +106,13 @@ button,input,select,textarea{font:inherit;color:inherit}
 .wires .dim{opacity:.28}
 
 /* ---------- node ---------- */
-.node{position:absolute;top:0;left:0;width:var(--cw);height:var(--ch);cursor:grab;user-select:none;
+.node{position:absolute;top:0;left:0;width:var(--cw);height:var(--ch);cursor:pointer;user-select:none;
   background:var(--panel);border:1.5px solid var(--line2);border-radius:3px;box-shadow:var(--sh1);
   display:flex;align-items:center;gap:calc(var(--fs)*.62);padding:0 calc(var(--fs)*.72);
   transition:box-shadow .12s,border-color .12s}
 .node:hover{border-color:var(--ink3);box-shadow:var(--sh2);z-index:6}
-.node.sel{border-color:var(--accent);border-width:2px;box-shadow:0 0 0 3px var(--accent-soft),var(--sh2);z-index:8}
+.node.sel{border-color:var(--accent);border-width:2px;box-shadow:0 0 0 3px var(--accent-soft),var(--sh2);
+  z-index:8;cursor:grab}
 .node.drag{cursor:grabbing;box-shadow:var(--sh2);z-index:20}
 .node.g-male.tint{background:var(--male-soft);border-color:var(--male-line)}
 .node.g-female.tint{background:var(--female-soft);border-color:var(--female-line)}
