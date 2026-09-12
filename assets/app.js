@@ -5,7 +5,7 @@
    1. 定数・状態
    ============================================================ */
 const LS = "kakeizu-drafter-v1";
-const BASE_W = 236, BASE_H = 104;
+const BASE_W = 252, BASE_H = 112;
 const SIB_GAP = 30, GROUP_GAP = 52, ROOT_GAP = 96, COUPLE_GAP = 26, ROW_GAP = 96;
 const GENDERS = { male:"男性", female:"女性", other:"その他" };
 
@@ -1529,11 +1529,11 @@ function buildSVG(){
       const one = dates + (dates && agTx ? "  " : "") + agTx;
       if(one) sub.push({ t:one, c: col.ink2 });
     }
-    ty = H/2 - sub.length*F*0.55 + F*0.34;
-    s += '<text x="'+tx+'" y="'+ty.toFixed(1)+'" font-size="'+(F*1.22).toFixed(1)+'" font-weight="600" fill="'+col.ink+'" font-family="Hiragino Mincho ProN, Yu Mincho, serif">'+esc(fullName(p))+'</text>';
+    ty = H/2 - sub.length*F*0.72 + F*0.5;
+    s += '<text x="'+tx+'" y="'+ty.toFixed(1)+'" font-size="'+(F*1.65).toFixed(1)+'" font-weight="600" fill="'+col.ink+'" font-family="Hiragino Mincho ProN, Yu Mincho, serif">'+esc(fullName(p))+'</text>';
     for(const row of sub){
-      ty += F*1.05;
-      s += '<text x="'+tx+'" y="'+ty.toFixed(1)+'" font-size="'+(F*0.78).toFixed(1)+'" fill="'+row.c+'">'+esc(row.t)+'</text>';
+      ty += F*1.4;
+      s += '<text x="'+tx+'" y="'+ty.toFixed(1)+'" font-size="'+(F*1.08).toFixed(1)+'" fill="'+row.c+'">'+esc(row.t)+'</text>';
     }
     s += '</g>';
   }
