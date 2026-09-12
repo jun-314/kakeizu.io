@@ -23,8 +23,10 @@ const esc = s => String(s==null?"":s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"
 const uid = p => (p||"x") + Math.random().toString(36).slice(2,9);
 const clamp = (v,a,b)=> v<a?a:v>b?b:v;
 const byId = id => S.people.find(p=>p.id===id) || null;
-const cw = ()=> Math.round(BASE_W * S.set.cardScale);
-const ch = ()=> Math.round(BASE_H * S.set.cardScale);
+/* カードは文字が収まる大きさに自動で広がる（文字倍率が1を超えた分だけ拡大） */
+const scl = ()=> Math.max(1, S.set.fontScale || 1);
+const cw = ()=> Math.round(BASE_W * scl());
+const ch = ()=> Math.round(BASE_H * scl());
 
 /* ============================================================
    2. 日付ユーティリティ（年のみ・年月のみも許容）
@@ -239,11 +241,11 @@ function exportObj(){
    詰め、親を子群の中央へ寄せる。兄弟は年長が左、夫婦は男性が左。
    ============================================================ */
 function autoLayout(ids){
-  const W = cw(), H = ch(), ROW = H + Math.round(ROW_GAP * S.set.cardScale);
-  const CG = Math.round(COUPLE_GAP * S.set.cardScale);
-  const SG = Math.round(SIB_GAP * S.set.cardScale);
-  const GG = Math.round(GROUP_GAP * S.set.cardScale);
-  const RG = Math.round(ROOT_GAP * S.set.cardScale);
+  const W = cw(), H = ch(), ROW = H + Math.round(ROW_GAP * scl());
+  const CG = Math.round(COUPLE_GAP * scl());
+  const SG = Math.round(SIB_GAP * scl());
+  const GG = Math.round(GROUP_GAP * scl());
+  const RG = Math.round(ROOT_GAP * scl());
 
   const set = new Set(ids);
   const person = new Map(); S.people.forEach(p=>{ if(set.has(p.id)) person.set(p.id,p); });
@@ -655,18 +657,33 @@ function render(){
   renderNodes();
   renderWires();
   renderRail();
+  renderSelbar();
   updateEmpty();
+}
+
+/* 画面上部の「選択中：〇〇」表示 */
+function renderSelbar(){
+  const bar = document.getElementById("selbar");
+  const p = S.sel ? byId(S.sel) : null;
+  if(!p){ bar.hidden = true; return; }
+  const who = document.getElementById("selbar-name");
+  who.innerHTML = '<span class="g-'+p.gender+'">'+symbol(p.gender, 14)+'</span>'+esc(fullName(p));
+  bar.hidden = false;
 }
 
 function renderNodes(){
   const frag = document.createDocumentFragment();
+  const nowShown = new Set();
   for(const p of S.people){
-    if(!VIS.has(p.id)) continue;
+    if(!VIS.has(p.id) || !tlShown(p.id)) continue;
+    nowShown.add(p.id);
     const pos = S.pos[p.id] || {x:0,y:0};
     const n = document.createElement("div");
-    n.className = "node g-" + p.gender + (S.set.tint ? " tint" : "") + (S.sel===p.id ? " sel" : "");
+    n.className = "node g-" + p.gender + (S.set.tint ? " tint" : "") + (S.sel===p.id ? " sel" : "")
+                + (TL.on && !TL.silent && !TL.shown.has(p.id) ? " pop" : "");
     n.dataset.id = p.id;
     n.style.transform = "translate(" + pos.x + "px," + pos.y + "px)";
+    n.style.setProperty("--tf", "translate(" + pos.x + "px," + pos.y + "px)");
 
     const rel = S.set.degree && KIN.get(p.id);
     let html = "";
@@ -702,6 +719,7 @@ function renderNodes(){
   }
   nodesEl.textContent = "";
   nodesEl.appendChild(frag);
+  TL.shown = nowShown;
   stage.classList.toggle("lod", S.view.k < 0.42);
 }
 
@@ -712,24 +730,26 @@ function geo(id){
 }
 
 function wireData(){
-  const sc = S.set.cardScale;
+  const sc = scl();
   const drop = Math.round(40*sc), laneStep = Math.round(13*sc), MAXLANE = 3;
   const below = Math.round(11*sc), slash = Math.round(9*sc);
   const parts = [], groups = [];
 
   /* 同じ段に並ぶカード（夫婦線が他人のカードを跨いでいないか調べるため） */
   const rowCards = new Map();
+  const shown = id => VIS.has(id) && tlShown(id);
   for(const p of S.people){
-    if(!VIS.has(p.id)) continue;
+    if(!shown(p.id)) continue;
     const g = geo(p.id);
     if(!rowCards.has(g.y)) rowCards.set(g.y, []);
     rowCards.get(g.y).push({ id:p.id, left:g.left, right:g.right });
   }
 
   for(const u of S.unions){
-    const ps = u.partners.filter(x=> x && VIS.has(x));
-    const kids = u.children.filter(c=> VIS.has(c));
+    const ps = u.partners.filter(x=> x && shown(x));
+    const kids = u.children.filter(c=> shown(c));
     let sx = null, sy = null;
+    const K = u.id;
 
     if(ps.length === 2){
       const a = geo(ps[0]), b = geo(ps[1]);
@@ -740,25 +760,25 @@ function wireData(){
           c.id !== ps[0] && c.id !== ps[1] && c.left < R.left && L.right < c.right);
         if(!blocked){
           const y = a.cy;
-          parts.push({ t:"line", x1:L.right, y1:y, x2:R.left, y2:y, dash:dash });
+          parts.push({ t:"line", k:K+":cp", x1:L.right, y1:y, x2:R.left, y2:y, dash:dash });
           sx = (L.right + R.left)/2; sy = y;
           if(u.status === "divorced"){
-            parts.push({ t:"line", x1:sx-slash*0.8, y1:y-slash, x2:sx-slash*1.5, y2:y+slash });
-            parts.push({ t:"line", x1:sx+slash*1.5, y1:y-slash, x2:sx+slash*0.8, y2:y+slash });
+            parts.push({ t:"line", k:K+":dv1", x1:sx-slash*0.8, y1:y-slash, x2:sx-slash*1.5, y2:y+slash });
+            parts.push({ t:"line", k:K+":dv2", x1:sx+slash*1.5, y1:y-slash, x2:sx+slash*0.8, y2:y+slash });
           }
         }else{
           /* 間に別の人物がいるときはカードの下を回す */
           const y = Math.max(L.bottom, R.bottom) + below;
-          parts.push({ t:"line", x1:L.cx, y1:L.bottom, x2:L.cx, y2:y });
-          parts.push({ t:"line", x1:L.cx, y1:y, x2:R.cx, y2:y, dash:dash });
-          parts.push({ t:"line", x1:R.cx, y1:R.bottom, x2:R.cx, y2:y });
+          parts.push({ t:"line", k:K+":cpL", x1:L.cx, y1:L.bottom, x2:L.cx, y2:y });
+          parts.push({ t:"line", k:K+":cp", x1:L.cx, y1:y, x2:R.cx, y2:y, dash:dash });
+          parts.push({ t:"line", k:K+":cpR", x1:R.cx, y1:R.bottom, x2:R.cx, y2:y });
           sx = (L.cx + R.cx)/2; sy = y;
         }
       }else{
-        parts.push({ t:"line", x1:L.right, y1:L.cy, x2:R.left, y2:R.cy, dash:dash });
+        parts.push({ t:"line", k:K+":cp", x1:L.right, y1:L.cy, x2:R.left, y2:R.cy, dash:dash });
         sx = (L.right + R.left)/2; sy = (L.cy + R.cy)/2;
       }
-      if(sx != null && !kids.length) parts.push({ t:"dot", x:sx, y:sy });
+      if(sx != null && !kids.length) parts.push({ t:"dot", k:K+":dot", x:sx, y:sy });
     }else if(ps.length === 1){
       const a = geo(ps[0]); sx = a.cx; sy = a.bottom;
     }
@@ -767,10 +787,10 @@ function wireData(){
     let minx = Infinity, maxx = -Infinity, topY = Infinity;
     const tops = [];
     for(const c of kids){
-      const g = geo(c); tops.push(g);
+      const g = geo(c); g.id = c; tops.push(g);
       minx = Math.min(minx, g.cx); maxx = Math.max(maxx, g.cx); topY = Math.min(topY, g.top);
     }
-    groups.push({ sx:sx, sy:sy, tops:tops, minx:minx, maxx:maxx, topY:topY, couple: ps.length===2 });
+    groups.push({ k:K, sx:sx, sy:sy, tops:tops, minx:minx, maxx:maxx, topY:topY, couple: ps.length===2 });
   }
 
   /* 横線（きょうだいバー）が同じ高さで重ならないよう、段ごとに車線を割り当てる */
@@ -798,22 +818,40 @@ function wireData(){
   for(const g of groups){
     let busY = g.topY - drop - (g.lane||0)*laneStep;
     if(busY <= g.sy + 4) busY = g.sy + Math.max(6, drop*0.4);
-    parts.push({ t:"line", x1:g.sx, y1:g.sy, x2:g.sx, y2:busY });
-    parts.push({ t:"line", x1:Math.min(g.minx,g.sx), y1:busY, x2:Math.max(g.maxx,g.sx), y2:busY });
-    for(const t of g.tops) parts.push({ t:"line", x1:t.cx, y1:busY, x2:t.cx, y2:t.top });
-    if(g.couple) parts.push({ t:"dot", x:g.sx, y:g.sy });
+    parts.push({ t:"line", k:g.k+":v", x1:g.sx, y1:g.sy, x2:g.sx, y2:busY });
+    parts.push({ t:"line", k:g.k+":bus", x1:Math.min(g.minx,g.sx), y1:busY, x2:Math.max(g.maxx,g.sx), y2:busY });
+    for(const t of g.tops) parts.push({ t:"line", k:g.k+":c:"+t.id, x1:t.cx, y1:busY, x2:t.cx, y2:t.top });
+    if(g.couple) parts.push({ t:"dot", k:g.k+":dot", x:g.sx, y:g.sy });
   }
   return parts;
 }
 
+wires.addEventListener("animationend", function(e){
+  const el = e.target;
+  if(el.classList && el.classList.contains("grow")){ el.classList.remove("grow"); el.removeAttribute("pathLength"); }
+});
+nodesEl.addEventListener("animationend", function(e){
+  const el = e.target;
+  if(el.classList && el.classList.contains("pop")) el.classList.remove("pop");
+});
+
 function renderWires(){
   const parts = wireData();
+  const keys = new Set();
   let s = "";
   for(const p of parts){
-    if(p.t === "line") s += '<line x1="'+p.x1.toFixed(1)+'" y1="'+p.y1.toFixed(1)+'" x2="'+p.x2.toFixed(1)+'" y2="'+p.y2.toFixed(1)+'"'+(p.dash?' class="dashed"':'')+'/>';
-    else s += '<circle class="join" cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="3.4"/>';
+    if(p.k) keys.add(p.k);
+    const fresh = TL.on && !TL.silent && p.k && !TL.wireKeys.has(p.k);
+    if(p.t === "line"){
+      const cls = [p.dash ? "dashed" : "", fresh ? "grow" : ""].filter(Boolean).join(" ");
+      s += '<line x1="'+p.x1.toFixed(1)+'" y1="'+p.y1.toFixed(1)+'" x2="'+p.x2.toFixed(1)+'" y2="'+p.y2.toFixed(1)+'"'
+         + (cls ? ' class="'+cls+'"' : '') + (fresh ? ' pathLength="1"' : '') + '/>';
+    }else{
+      s += '<circle class="join'+(fresh?" pop":"")+'" cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="3.4"/>';
+    }
   }
   wires.innerHTML = s;
+  TL.wireKeys = keys;
 }
 
 function bounds(){
@@ -857,9 +895,18 @@ function fitView(animate){
   const k = clamp(Math.min((r.width-pad*2)/bb.w, (r.height-pad*2)/bb.h), 0.1, 1.6);
   setView({ k:k, x: r.width/2 - (bb.x+bb.w/2)*k, y: r.height/2 - (bb.y+bb.h/2)*k }, animate!==false);
 }
+/* 選んだ人物を画面中央へ。倍率は「本人が読めて、周りの数人も見える」程度に自動調整する。
+   すでにその範囲内の倍率なら、利用者が決めた倍率を尊重して変えない。 */
+function focusScale(){
+  const r = canvas.getBoundingClientRect();
+  return clamp(Math.min(r.width/(cw()*3.1), r.height/(ch()*4.6)), 0.45, 0.9);
+}
 function centerOn(id, animate){
   const q = S.pos[id]; if(!q) return;
-  const r = canvas.getBoundingClientRect(), k = Math.max(S.view.k, 0.6);
+  const r = canvas.getBoundingClientRect();
+  const t = focusScale();
+  let k = S.view.k;
+  if(k < t*0.7 || k > t*1.6) k = t;
   setView({ k:k, x: r.width/2 - (q.x+cw()/2)*k, y: r.height/2 - (q.y+ch()/2)*k }, animate!==false);
 }
 function zoomBy(f){
@@ -873,6 +920,7 @@ function saveSoon(){ clearTimeout(saveTimer); saveTimer = setTimeout(save, 400);
 
 /* ---- ホイール／ピンチ ---- */
 canvas.addEventListener("wheel", function(e){
+  if(onOverlay(e)) return;
   e.preventDefault();
   const r = canvas.getBoundingClientRect(), mx = e.clientX-r.left, my = e.clientY-r.top;
   if(e.shiftKey && !e.ctrlKey){
@@ -891,7 +939,12 @@ const ptrs = new Map();
 let mode = null, dragId = null, dragStart = null, moved = false, pinch = null;
 let tapId = null, threshold = 4;
 
+/* キャンバス上に重ねた操作部品（ズーム・時系列バー・選択中バッジ）は、
+   キャンバスのドラッグ処理に横取りされないようにする */
+function onOverlay(e){ return !!(e.target.closest && e.target.closest(".zoombox, .tlbar, .selbar, .hint")); }
+
 canvas.addEventListener("pointerdown", function(e){
+  if(onOverlay(e)) return;
   if(e.button !== 0 && e.button !== 1) return;
   try{ canvas.setPointerCapture(e.pointerId); }catch(err){}
   ptrs.set(e.pointerId, { x:e.clientX, y:e.clientY });
@@ -942,6 +995,7 @@ canvas.addEventListener("pointermove", function(e){
   }else if(mode === "drag" && dragId){
     S.pos[dragId] = { x: Math.round(dragStart.ox + dx/S.view.k), y: Math.round(dragStart.oy + dy/S.view.k) };
     dragStart.el.style.transform = "translate("+S.pos[dragId].x+"px,"+S.pos[dragId].y+"px)";
+    dragStart.el.style.setProperty("--tf", dragStart.el.style.transform);
     renderWires();
   }
 });
@@ -956,8 +1010,11 @@ function endPointer(e){
   }else if(mode === "pan"){
     canvas.classList.remove("panning");
     if(!moved){
-      if(tapId) select(tapId);
-      else if(S.sel) select(null);
+      if(tapId){ select(tapId); centerOn(tapId, true); }
+      else{
+        if(S.sel) select(null);
+        if(isPhone()) hideRail();   /* 家系図の余白をタップ → 詳細シートを閉じる */
+      }
     }
     saveSoon();
   }
@@ -1295,9 +1352,9 @@ function paneView(){
     '<span class="val" id="'+id+'-v">'+fmt+'</span></div></div>';
 
   pane.innerHTML =
-    '<div class="sect"><h3>サイズ</h3>'+
-      sl("s-card","カードの大きさ",0.6,1.8,0.05,S.set.cardScale,Math.round(S.set.cardScale*100)+"%")+
-      sl("s-font","文字の大きさ",0.75,1.6,0.05,S.set.fontScale,Math.round(S.set.fontScale*100)+"%")+
+    '<div class="sect"><h3>文字の大きさ</h3>'+
+      sl("s-font","文字の大きさ",0.75,3,0.05,S.set.fontScale,Math.round(S.set.fontScale*100)+"%")+
+      '<p class="note" style="margin-top:-2px;margin-bottom:8px">文字を大きくすると、収まるようにカードも自動で広がります。</p>'+
       '<div class="mini"><button id="s-reset">標準に戻す</button></div></div>'+
     '<div class="sect"><h3>カードの表示</h3>'+
       '<label class="sw">性別で色分けする<input type="checkbox" id="v-tint"'+(S.set.tint?" checked":"")+'></label>'+
@@ -1308,7 +1365,7 @@ function paneView(){
     '<div class="sect"><h3>配置</h3>'+
       '<label class="sw">変更したら自動で整列する<input type="checkbox" id="v-auto"'+(S.set.autoLayout?" checked":"")+'></label>'+
       '<p class="note" style="margin-top:8px">整列の規則：夫婦は<b>男性が左</b>、きょうだいは<b>年長が左</b>。親は子の中央に揃えます。</p>'+
-      '<div class="mini"><button id="v-arrange">いま整列する</button><button id="v-fit">全体表示</button></div></div>';
+      '<div class="mini"><button id="v-arrange">いま整列する</button></div></div>';
 
   const bindS = (id, key, fmt)=>{
     const r = document.getElementById(id), v = document.getElementById(id+"-v");
@@ -1320,16 +1377,14 @@ function paneView(){
     });
     r.addEventListener("change", ()=> commit({ layout:true }));
   };
-  bindS("s-card","cardScale", v=> Math.round(v*100)+"%");
   bindS("s-font","fontScale", v=> Math.round(v*100)+"%");
-  document.getElementById("s-reset").onclick = ()=>{ S.set.cardScale = 1; S.set.fontScale = 1; commit({layout:true}); };
+  document.getElementById("s-reset").onclick = ()=>{ S.set.fontScale = 1; commit({layout:true}); };
   const tog = (id,key,relay)=> document.getElementById(id).addEventListener("change", function(){
     S.set[key] = this.checked; commit({ layout:!!relay });
   });
   tog("v-tint","tint"); tog("v-maiden","maiden"); tog("v-age","age"); tog("v-deg","degree");
   tog("v-auto","autoLayout");
   document.getElementById("v-arrange").onclick = ()=>{ relayout(); render(); save(); fitView(true); };
-  document.getElementById("v-fit").onclick = ()=> fitView(true);
 }
 
 /* ---------- データ ---------- */
@@ -1656,7 +1711,7 @@ function confirmDelete(id){
   modal.querySelector("#del-ok").onclick = function(){ closeModal(); removePerson(id); toast("削除しました"); };
 }
 
-function openPersonDialog(id){ select(id); S.tab = "detail"; railEl.classList.remove("hide"); renderRail(); }
+function openPersonDialog(id){ select(id); S.tab = "detail"; showRail(); renderRail(); }
 
 /* ============================================================
    15. ツールバー・キーボード・起動
@@ -1667,20 +1722,53 @@ document.getElementById("tabs").addEventListener("click", function(e){
 });
 document.getElementById("b-add").onclick = ()=> openAddDialog(null, "solo");
 document.getElementById("b-arrange").onclick = ()=>{ relayout(); render(); save(); fitView(true); toast("自動整列しました"); };
-document.getElementById("b-fit").onclick = ()=> fitView(true);
 document.getElementById("z-in").onclick = ()=> zoomBy(1.25);
 document.getElementById("z-out").onclick = ()=> zoomBy(1/1.25);
 document.getElementById("z-pct").onclick = ()=>{
   const r = canvas.getBoundingClientRect(), mx = r.width/2, my = r.height/2, k2 = 1;
   setView({ k:k2, x: mx-(mx-S.view.x)*(k2/S.view.k), y: my-(my-S.view.y)*(k2/S.view.k) }, true);
 };
-document.getElementById("b-rail").onclick = function(){
-  railEl.classList.toggle("hide");
-  this.classList.toggle("on", !railEl.classList.contains("hide"));
-};
+/* ---- 右パネル（スマホではボトムシート）の開閉 ---- */
+const railBtn = document.getElementById("b-rail");
+function isPhone(){ return window.matchMedia("(max-width: 640px)").matches; }
+function syncRailBtn(){ railBtn.classList.toggle("on", !railEl.classList.contains("hide")); }
+function hideRail(){ railEl.classList.add("hide"); railEl.style.transform = ""; syncRailBtn(); }
+function showRail(){ railEl.classList.remove("hide"); railEl.style.transform = ""; syncRailBtn(); }
+railBtn.onclick = function(){ if(railEl.classList.contains("hide")) showRail(); else hideRail(); };
 /* スマートフォンではパネルを閉じた状態から始める（キャンバスを広く使うため） */
-if(window.innerWidth <= 640) railEl.classList.add("hide");
-document.getElementById("b-rail").classList.toggle("on", !railEl.classList.contains("hide"));
+if(isPhone()) railEl.classList.add("hide");
+syncRailBtn();
+
+/* スマホ：シート上部（つまみ・タブ）を下へスワイプすると閉じる */
+(function(){
+  const grip = document.getElementById("tabs");
+  let y0 = null, dy = 0, active = false;
+  grip.addEventListener("pointerdown", function(e){
+    if(!isPhone()) return;
+    y0 = e.clientY; dy = 0; active = true;
+    railEl.style.transition = "none";
+    try{ grip.setPointerCapture(e.pointerId); }catch(err){}
+  });
+  grip.addEventListener("pointermove", function(e){
+    if(!active || y0 == null) return;
+    dy = Math.max(0, e.clientY - y0);
+    railEl.style.transform = "translateY(" + dy + "px)";
+  });
+  const end = function(){
+    if(!active) return;
+    active = false;
+    railEl.style.transition = "";
+    if(dy > 70){ hideRail(); }
+    else{ railEl.style.transform = ""; }
+    y0 = null; dy = 0;
+  };
+  grip.addEventListener("pointerup", end);
+  grip.addEventListener("pointercancel", end);
+})();
+
+/* 画面上部の「選択中」表示 */
+document.getElementById("selbar-name").onclick = function(){ if(S.sel) openPersonDialog(S.sel); };
+document.getElementById("selbar-x").onclick = function(){ select(null); };
 
 const themeBtn = document.getElementById("b-theme");
 themeBtn.onclick = function(){
@@ -1749,7 +1837,7 @@ function ageClean(groups){
     id: g.id || uid("g"),
     name: String(g.name || "無題のリスト"),
     people: (Array.isArray(g.people) ? g.people : []).filter(p=> p && p.dob && parseDate(p.dob))
-      .map(p=>({ id: p.id || uid("m"), name: String(p.name || "名称未設定"),
+      .map(p=>({ id: p.id || uid("m"), pid: p.pid || "", name: String(p.name || "名称未設定"),
                  dob: normDob(p.dob), createdAt: p.createdAt || new Date().toISOString() }))
   }));
 }
@@ -1815,8 +1903,18 @@ function ageGroups(){ return [treeGroup()].concat(A.groups); }
 
 function ageVisible(list){ return A.showDead ? list : list.filter(p=> !p.dead); }
 
+/* 自分のリストのメンバーが家系図の人物を指している（pid あり）場合は、
+   家系図側の最新の名前・生年月日・故人情報で上書きして表示する */
+function ageResolve(p){
+  if(!p.pid) return p;
+  const t = byId(p.pid);
+  if(!t) return p;
+  const d = parseDate(t.birth);
+  return Object.assign({}, p, { name: fullName(t), dob: d ? normDob(t.birth) : p.dob,
+    approx: !!d && d.prec < 3, dead: isDead(t), death: t.death || "", linked:true });
+}
 function ageView(){
-  const tag = (g)=> g.people.map(p=> Object.assign({}, p, { gid:g.id, gname:g.name }));
+  const tag = (g)=> g.people.map(p=> Object.assign({}, ageResolve(p), { gid:g.id, gname:g.name }));
   if(A.active === ALL_ID || !ageGroup(A.active)){
     let people = [];
     ageGroups().forEach(g=>{ people = people.concat(tag(g)); });
@@ -1844,7 +1942,7 @@ function shownAge(p){
 
 /* ---------- 描画 ---------- */
 const ageRoot = document.getElementById("agei");
-const ageForm = { name:"", to:"", y:"", m:"", d:"" };
+const ageForm = { name:"", to:"", y:"", m:"", d:"", pid:"" };
 
 function ageSnapshot(){
   const g = id => { const e = document.getElementById(id); return e ? e.value : null; };
@@ -1944,18 +2042,20 @@ function ageRender(){
       const sa = shownAge(p);
       const dd = p.dead ? null : daysToBirthday(p.dob);
       const today = dd === 0;
-      h += '<div class="prow'+(today?" today":"")+(p.dead?" gone":"")+(p.tree?" link":"")+
+      const inTree = p.tree || p.linked;
+      h += '<div class="prow'+(today?" today":"")+(p.dead?" gone":"")+
            '" data-id="'+p.id+'" data-g="'+p.gid+'"'+(p.pid?' data-pid="'+p.pid+'"':'')+'>'+
         '<div class="abadge"><b>'+(sa.n==null?"—":(sa.approx?"約":"")+sa.n)+'</b><span>'+sa.unit+'</span></div>'+
         '<div class="pmain"><div class="pname">'+esc(p.name)+(p.dead?'<i class="gonetag">故</i>':'')+'</div>'+
           '<div class="pmeta"><span class="d">'+esc(fmtJa(p.dob))+
             (p.dead && p.death ? ' – '+esc(fmtJa(p.death)) : '')+'</span>'+
-          (v.all ? '<span class="gchip'+(p.tree?" tree":"")+'">'+esc(p.gname)+'</span>' : '')+'</div></div>'+
+          (v.all ? '<span class="gchip'+(p.tree?" tree":"")+'">'+esc(p.gname)+'</span>' : '')+
+          (p.linked && !v.all ? '<span class="gchip tree">家系図</span>' : '')+'</div></div>'+
         '<div class="tochip'+(dd!=null && dd<=30 ? " soon":"")+'">'+
           (dd==null ? "" : today ? "本日 誕生日" : "あと "+dd+" 日")+'</div>'+
-        (p.tree
-          ? '<button class="pdel keep" title="家系図で開く" aria-label="'+esc(p.name)+'を家系図で開く">'+ico.open+'</button>'
-          : '<button class="pdel" title="削除" aria-label="'+esc(p.name)+'を削除">'+
+        (inTree
+          ? '<button class="pdel keep" data-act="tree" title="家系図で開く" aria-label="'+esc(p.name)+'を家系図で開く">'+ico.open+'</button>'
+          : '<button class="pdel" data-act="del" title="削除" aria-label="'+esc(p.name)+'を削除">'+
             '<svg viewBox="0 0 16 16"><path d="M2.8 4.4h10.4M6.2 4.4V2.6h3.6v1.8M4.4 4.4l.7 9h5.8l.7-9"/></svg></button>')+
       '</div>';
     }
@@ -1965,9 +2065,22 @@ function ageRender(){
   /* 新規登録 */
   const yNow = new Date().getFullYear();
   const toTree = ageForm.to === TREE_ID;
-  h += '<div class="aform"><h2>新規登録</h2><div class="in">'+
-    '<div class="field"><label for="a-name">お名前</label>'+
-      '<input class="inp" id="a-name" placeholder="山田 太郎" value="'+esc(ageForm.name)+'" autocomplete="off"></div>';
+  const picked = ageForm.pid && byId(ageForm.pid) ? byId(ageForm.pid) : null;
+  h += '<div class="aform"><h2>新規登録</h2><div class="in">';
+  if(!toTree){
+    /* 家系図の人物をリストに入れる（名前や生年月日は家系図と連動したままになる） */
+    const cands = S.people.filter(p=> parseDate(p.birth))
+      .sort((a,b)=> sortKey(a.birth).localeCompare(sortKey(b.birth)));
+    h += '<div class="field"><label for="a-pick">家系図の人物から選ぶ</label>'+
+      '<select class="inp" id="a-pick"><option value="">（選ばずに手入力する）</option>'+
+      cands.map(p=> '<option value="'+p.id+'"'+(ageForm.pid===p.id?" selected":"")+'>'+
+        esc(fullName(p))+'　'+esc(fmtJa(normDob(p.birth)))+(isDead(p)?"　故":"")+'</option>').join("")+
+      '</select>'+
+      (picked ? '<p class="note" style="margin-top:5px">家系図の <b>'+esc(fullName(picked))+'</b> をこのリストに入れます。名前と生年月日は家系図側と連動します。</p>' : '')+
+      '</div>';
+  }
+  h += '<div class="field"><label for="a-name">お名前</label>'+
+      '<input class="inp" id="a-name" placeholder="山田 太郎" value="'+esc(picked?fullName(picked):ageForm.name)+'" autocomplete="off"'+(picked?" readonly":"")+'></div>';
   if(v.all || v.tree){
     h += '<div class="field"><label for="a-to">追加先</label><select class="inp" id="a-to">'+
       '<option value="'+TREE_ID+'"'+(toTree?" selected":"")+'>家系図（家系図タブにも追加）</option>'+
@@ -1976,7 +2089,11 @@ function ageRender(){
       (toTree ? '<p class="note" style="margin-top:5px">姓と名は空白で区切ってください。家系図には単独の人物として追加され、続柄はあとから設定できます。</p>' : '')+
       '</div>';
   }
-  h += '<div class="field"><label>生年月日</label><div class="dob">'+
+  if(picked){
+    const d = parseDate(picked.birth);
+    ageForm.y = String(d.y); ageForm.m = String(d.m || 1); ageForm.d = String(d.d || 1);
+  }
+  h += '<div class="field"><label>生年月日</label><div class="dob'+(picked?" locked":"")+'">'+
       cboxHTML("y","年", String(yNow-30), ageForm.y)+
       cboxHTML("m","月","1", ageForm.m)+
       cboxHTML("d","日","1", ageForm.d)+
@@ -2067,12 +2184,29 @@ function ageBind(){
   const list = document.getElementById("a-list");
   if(list) list.addEventListener("click", function(e){
     const row = e.target.closest(".prow"); if(!row) return;
-    if(row.dataset.pid){ ageOpenInTree(row.dataset.pid); return; }
-    if(e.target.closest(".pdel")) ageDeletePerson(row.dataset.g, row.dataset.id);
+    const act = e.target.closest(".pdel");
+    if(act){
+      e.stopPropagation();
+      if(act.dataset.act === "tree" && row.dataset.pid) ageOpenInTree(row.dataset.pid);
+      else if(act.dataset.act === "del") ageDeletePerson(row.dataset.g, row.dataset.id);
+      return;
+    }
+    ageDetail(row.dataset.g, row.dataset.id);   /* 行そのもの＝詳細を開く */
+  });
+
+  const pick = document.getElementById("a-pick");
+  if(pick) pick.addEventListener("change", function(){
+    ageForm.pid = this.value;
+    if(!this.value){ ageForm.name = ""; ageForm.y = ""; ageForm.m = ""; ageForm.d = ""; }
+    ageRender();
   });
 
   const to = document.getElementById("a-to");
-  if(to) to.addEventListener("change", function(){ ageForm.to = this.value; ageRender(); });
+  if(to) to.addEventListener("change", function(){
+    ageForm.to = this.value;
+    if(this.value === TREE_ID) ageForm.pid = "";
+    ageRender();
+  });
 
   /* コンボボックス */
   ageRoot.querySelectorAll(".cbox").forEach(box=>{
@@ -2129,9 +2263,68 @@ document.addEventListener("mousedown", function(e){
 /* ---------- 操作 ---------- */
 function ageOpenInTree(pid){
   if(!byId(pid)) return;
+  closeModal();
   setMode("tree");
   select(pid);
   centerOn(pid, true);
+}
+
+/* ---------- 行をタップしたときの詳細 ---------- */
+function ageDetail(gid, mid){
+  const g = ageGroup(gid); if(!g) return;
+  const raw = g.people.find(x=> x.id === mid); if(!raw) return;
+  const p = ageResolve(raw);
+  const t = p.pid ? byId(p.pid) : null;
+  const sa = shownAge(p);
+  const dd = p.dead ? null : daysToBirthday(p.dob);
+  const ageText = sa.n == null ? "—" : (sa.approx ? "約" : "") + sa.n + (sa.dead ? "（享年）" : "歳");
+  const nextText = dd == null ? "—" : dd === 0 ? "本日" : "あと " + dd + " 日";
+  const nb = (()=>{ const b = parseDate(p.dob); if(!b || p.dead) return "";
+    const now = new Date(); let y = now.getFullYear();
+    const n = new Date(y, (b.m||1)-1, b.d||1); if(n < new Date(now.getFullYear(), now.getMonth(), now.getDate())) y++;
+    return y + "年" + (b.m||1) + "月" + (b.d||1) + "日"; })();
+  const canEdit = !p.pid && !g.tree;
+
+  let body = '<div class="card"><div class="hd">'+
+    (t ? '<span class="g-'+t.gender+'" style="display:flex;flex:0 0 auto">'+symbol(t.gender,22)+'</span>' : '')+
+    '<div style="min-width:0"><div class="nm">'+esc(p.name)+(p.dead?' <i class="gonetag">故</i>':'')+'</div>'+
+    (t && t.maiden ? '<div class="sub">旧姓 '+esc(t.maiden)+'</div>' : '')+
+    '</div></div></div>';
+
+  body += '<div class="kin" style="margin-bottom:14px">'+
+    '<div class="r" style="cursor:default"><span class="lb">年齢</span><span class="nn mono">'+esc(ageText)+'</span><span></span></div>'+
+    '<div class="r" style="cursor:default"><span class="lb">生年月日</span><span class="nn mono">'+esc(fmtJa(p.dob))+'</span><span></span></div>'+
+    (p.dead && p.death ? '<div class="r" style="cursor:default"><span class="lb">没年月日</span><span class="nn mono">'+esc(fmtJa(p.death))+'</span><span></span></div>' : '')+
+    (!p.dead ? '<div class="r" style="cursor:default"><span class="lb">次の誕生日</span><span class="nn mono">'+esc(nb)+'</span><span class="dg">'+esc(nextText)+'</span></div>' : '')+
+    '<div class="r" style="cursor:default"><span class="lb">リスト</span><span class="nn">'+esc(g.name)+(p.pid||g.tree?'　<span class="gchip tree">家系図と連動</span>':'')+'</span><span></span></div>'+
+    '</div>';
+
+  if(canEdit){
+    body += '<div class="sect"><h3>編集</h3>'+
+      '<div class="field"><label for="ad-name">お名前</label><input class="inp" id="ad-name" value="'+esc(raw.name)+'"></div>'+
+      '<div class="field"><label for="ad-dob">生年月日</label><input class="inp mono" id="ad-dob" value="'+esc(raw.dob)+'" placeholder="1985-08-30"></div>'+
+      '</div>';
+  }else if(t){
+    body += '<p class="note">名前や生年月日の変更は家系図タブで行います。</p>';
+  }
+
+  const foot =
+    (t ? '<button class="btn" id="ad-tree">家系図で開く</button>' : '')+
+    (!g.tree ? '<button class="btn danger" id="ad-del">'+(p.pid?"リストから外す":"削除")+'</button>' : '')+
+    (canEdit ? '<button class="btn primary" id="ad-save">保存</button>' : '<button class="btn" data-close>閉じる</button>');
+  openModal("メンバーの詳細", body, foot);
+
+  const tb = modal.querySelector("#ad-tree"); if(tb) tb.onclick = ()=> ageOpenInTree(p.pid);
+  const db = modal.querySelector("#ad-del");  if(db) db.onclick = ()=>{ closeModal(); ageDeletePerson(gid, mid); };
+  const sv = modal.querySelector("#ad-save");
+  if(sv) sv.onclick = ()=>{
+    const name = modal.querySelector("#ad-name").value.trim();
+    const dob = normDob(modal.querySelector("#ad-dob").value.trim());
+    if(!name){ modal.querySelector("#ad-name").focus(); return; }
+    if(!dob){ modal.querySelector("#ad-dob").focus(); toastAge("生年月日は 1985-08-30 のように入力してください"); return; }
+    raw.name = name; raw.dob = dob;
+    closeModal(); ageSave(); ageRender();
+  };
 }
 
 function ageAddPerson(){
@@ -2162,7 +2355,10 @@ function ageAddPerson(){
 
   const g = ageGroup(gid);
   if(!g || g.tree){ toastAge("追加先のリストがありません"); return; }
-  g.people.unshift({ id: uid("m"), name: val.name, dob: val.dob, createdAt: new Date().toISOString() });
+  const pid = ageForm.pid && byId(ageForm.pid) ? ageForm.pid : "";
+  if(pid && g.people.some(x=> x.pid === pid)){ toastAge("その人物はすでにこのリストにいます"); return; }
+  g.people.unshift({ id: uid("m"), pid: pid, name: val.name, dob: val.dob, createdAt: new Date().toISOString() });
+  ageForm.pid = "";
   clear();
   ageSave(); ageRender();
   const first = document.getElementById("a-name"); if(first) first.focus();
@@ -2316,6 +2512,138 @@ function openAgeData(){
   redraw();
 }
 
+
+/* ============================================================
+   16b. 時系列モード
+   生年の順に人物が現れ、親から子への線が伸びていく様子を再生する。
+   配置は全員ぶんを先に確定させ、表示だけを年で絞る（カードが跳ねないように）。
+   ============================================================ */
+const TL = { on:false, year:0, min:0, max:0, playing:false, speed:"normal", timer:null, silent:false,
+             years:new Map(), shown:new Set(), wireKeys:new Set() };
+const TL_SPEED = { slow:1400, normal:700, fast:280 };   /* 1年あたりのミリ秒 */
+
+function tlShown(id){
+  if(!TL.on) return true;
+  const y = TL.years.get(id);
+  return y != null && y <= TL.year;
+}
+
+/* 各人物が「現れる年」。生年が分かればその年。
+   分からない人は配偶者の年、それも無ければ最初の子の年から逆算、最後は最初の年。 */
+function tlComputeYears(){
+  const ix = IX || index();
+  const yrs = new Map();
+  const ids = Array.from(VIS);
+  for(const id of ids){
+    const p = byId(id); const d = p && parseDate(p.birth);
+    if(d) yrs.set(id, d.y);
+  }
+  for(let round=0; round<6; round++){
+    let changed = false;
+    for(const id of ids){
+      if(yrs.has(id)) continue;
+      let y = null;
+      for(const sp of spousesOf(id, ix)) if(yrs.has(sp)) y = Math.min(y==null?Infinity:y, yrs.get(sp));
+      if(y == null){
+        for(const c of childrenOf(id, ix)) if(yrs.has(c)) y = Math.min(y==null?Infinity:y, yrs.get(c) - 25);
+      }
+      if(y != null){ yrs.set(id, y); changed = true; }
+    }
+    if(!changed) break;
+  }
+  let min = Infinity, max = -Infinity;
+  yrs.forEach(y=>{ min = Math.min(min,y); max = Math.max(max,y); });
+  if(!isFinite(min)){ min = new Date().getFullYear(); max = min; }
+  for(const id of ids) if(!yrs.has(id)) yrs.set(id, min);
+  TL.years = yrs; TL.min = min; TL.max = max;
+}
+
+function tlBornIn(year){
+  const out = [];
+  TL.years.forEach((y,id)=>{
+    if(y !== year) return;
+    const p = byId(id); const d = p && parseDate(p.birth);
+    if(d && d.y === year) out.push(p);
+  });
+  return out;
+}
+
+function tlUpdateUI(){
+  document.getElementById("tl-year").textContent = TL.year;
+  const born = tlBornIn(TL.year);
+  document.getElementById("tl-note").textContent = born.length ? born.map(fullName).join("・") + " 誕生" : "";
+  const r = document.getElementById("tl-range");
+  r.min = TL.min; r.max = TL.max; r.value = TL.year;
+  document.getElementById("tlbar").classList.toggle("playing", TL.playing);
+  document.getElementById("tl-play").title = TL.playing ? "停止" : "再生";
+  $$("#tl-speed button").forEach(b=> b.setAttribute("aria-pressed", b.dataset.s === TL.speed ? "true" : "false"));
+}
+
+/* animate=false（スライダー操作など）のときは伸びるアニメーションを付けない */
+function tlSetYear(y, animate){
+  TL.year = clamp(y, TL.min, TL.max);
+  TL.silent = !animate;
+  renderNodes(); renderWires();
+  TL.silent = false;
+  tlUpdateUI();
+}
+
+function tlTick(){
+  if(!TL.playing) return;
+  if(TL.year >= TL.max){ tlPause(); return; }
+  tlSetYear(TL.year + 1, true);
+  /* 誰も生まれない年は速く飛ばす */
+  let someone = false; TL.years.forEach(v=>{ if(v === TL.year + 1) someone = true; });
+  TL.timer = setTimeout(tlTick, TL_SPEED[TL.speed] * (someone ? 1 : 0.18));
+}
+function tlPlay(){
+  if(TL.year >= TL.max) tlSetYear(TL.min, false);
+  TL.playing = true; tlUpdateUI();
+  clearTimeout(TL.timer);
+  TL.timer = setTimeout(tlTick, TL_SPEED[TL.speed]);
+}
+function tlPause(){ TL.playing = false; clearTimeout(TL.timer); TL.timer = null; tlUpdateUI(); }
+
+function tlStart(){
+  if(S.mode !== "tree") setMode("tree");
+  if(S.sel) select(null);
+  recompute();
+  relayout();                 /* 最終形の配置を先に決めておく */
+  tlComputeYears();
+  TL.on = true;
+  TL.year = TL.min;
+  TL.shown = new Set(); TL.wireKeys = new Set();
+  document.getElementById("tlbar").hidden = false;
+  document.getElementById("b-tl").classList.add("on");
+  canvas.classList.add("tl");
+  if(isPhone()) hideRail();
+  render();
+  fitView(true);
+  tlUpdateUI();
+  tlPlay();
+}
+function tlStop(){
+  tlPause();
+  TL.on = false;
+  document.getElementById("tlbar").hidden = true;
+  document.getElementById("b-tl").classList.remove("on");
+  canvas.classList.remove("tl");
+  render();
+}
+
+document.getElementById("b-tl").onclick = ()=>{ if(TL.on) tlStop(); else tlStart(); };
+document.getElementById("tl-close").onclick = tlStop;
+document.getElementById("tl-play").onclick = ()=>{ if(TL.playing) tlPause(); else tlPlay(); };
+document.getElementById("tl-speed").addEventListener("click", function(e){
+  const b = e.target.closest("button"); if(!b) return;
+  TL.speed = b.dataset.s; tlUpdateUI();
+  if(TL.playing){ clearTimeout(TL.timer); TL.timer = setTimeout(tlTick, TL_SPEED[TL.speed] * 0.5); }
+});
+document.getElementById("tl-range").addEventListener("input", function(){
+  const y = +this.value;          /* tlPause が UI を描き直す前に読む */
+  tlPause();
+  tlSetYear(y, false);
+});
 /* ============================================================
    17. モード切り替え
    ============================================================ */
@@ -2330,7 +2658,7 @@ function setMode(m){
   agePane.hidden = m !== "age";
   $$("#modes button").forEach(b=> b.setAttribute("aria-selected", b.dataset.mode === m ? "true" : "false"));
   try{ localStorage.setItem(LS + "-mode", m); }catch(e){}
-  if(m === "age") ageRender();
+  if(m === "age"){ if(typeof tlPause === "function" && TL.playing) tlPause(); ageRender(); }
   else applyView();
 }
 

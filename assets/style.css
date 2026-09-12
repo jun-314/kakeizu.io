@@ -459,7 +459,7 @@ textarea.inp{height:auto;padding:7px 9px;line-height:1.5;resize:vertical;font-fa
   .bar{gap:7px}
 }
 @media (max-width:560px){
-  #b-add span,#b-arrange span,#b-fit span,#b-age-data span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+  #b-add span,#b-arrange span,#b-tl span,#b-age-data span{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
   .btn{padding:0 9px}
 }
 
@@ -536,4 +536,87 @@ textarea.inp{height:auto;padding:7px 9px;line-height:1.5;resize:vertical;font-fa
 @media (max-width:400px){
   .modes button{padding:0 7px;font-size:11.5px}
   .brand{display:none}
+}
+
+/* ============================================================
+   選択中バッジ・時系列モード・AUTO ボタン
+   ============================================================ */
+
+/* 画面上部「選択中：〇〇」 */
+.selbar{position:absolute;left:50%;top:12px;transform:translateX(-50%);z-index:16;display:flex;align-items:stretch;
+  background:var(--panel);border:1px solid var(--accent-line);border-radius:4px;box-shadow:var(--sh2);
+  max-width:min(92vw,520px);overflow:hidden}
+.selbar .lb{display:flex;align-items:center;padding:0 10px;font-size:10px;font-weight:700;letter-spacing:.14em;
+  color:var(--panel);background:var(--accent)}
+.selbar .who{display:flex;align-items:center;gap:7px;border:0;background:none;cursor:pointer;padding:0 12px;
+  height:34px;font-family:var(--ff-name);font-weight:600;font-size:15px;letter-spacing:.03em;color:var(--ink);
+  min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.selbar .who:hover{background:var(--panel3)}
+.selbar .who .sym{width:14px;height:14px;flex:0 0 auto}
+.selbar .x{border:0;border-left:1px solid var(--line);background:none;cursor:pointer;width:34px;font-size:18px;
+  color:var(--ink3);line-height:1}
+.selbar .x:hover{color:var(--accent-ink);background:var(--accent-soft)}
+
+/* 自動整列の AUTO 文字アイコン（スマホのみ表示） */
+#b-arrange .auto{display:none;font-family:var(--ff-num);font-weight:600;font-size:11px;letter-spacing:.08em}
+
+/* 時系列モードのバー */
+.tlbar{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:16;display:flex;align-items:center;
+  gap:10px;padding:8px 10px;background:var(--panel);border:1px solid var(--line);border-radius:5px;box-shadow:var(--sh2);
+  width:min(92vw,720px)}
+.tlbar .btn.icon{width:36px;height:36px;flex:0 0 auto}
+.tlbar .btn.icon svg{width:16px;height:16px;fill:currentColor;stroke:none}
+.tlbar .i-pause{display:none}
+.tlbar.playing .i-play{display:none}
+.tlbar.playing .i-pause{display:block}
+.tl-year{display:flex;flex-direction:column;min-width:0;flex:0 0 auto;width:150px}
+.tl-year b{font-family:var(--ff-num);font-size:24px;font-weight:600;line-height:1;letter-spacing:-.01em;
+  font-variant-numeric:tabular-nums}
+.tl-year span{font-size:10.5px;color:var(--accent-ink);margin-top:3px;white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;min-height:13px;font-weight:600}
+.tlbar input[type=range]{flex:1 1 auto;min-width:80px;appearance:none;height:3px;background:var(--line);border-radius:2px;margin:0}
+.tlbar input[type=range]::-webkit-slider-thumb{appearance:none;width:16px;height:16px;border-radius:50%;background:var(--accent);
+  border:2px solid var(--panel);cursor:pointer;box-shadow:var(--sh1)}
+.tlbar input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--accent);
+  border:2px solid var(--panel);cursor:pointer}
+.tl-speed{display:flex;border:1px solid var(--line);border-radius:4px;overflow:hidden;flex:0 0 auto}
+.tl-speed button{border:0;border-right:1px solid var(--line);background:var(--panel2);height:30px;padding:0 10px;
+  font-size:11.5px;font-weight:600;color:var(--ink3);cursor:pointer}
+.tl-speed button:last-child{border-right:0}
+.tl-speed button[aria-pressed="true"]{background:var(--ink);color:var(--panel)}
+
+/* 登場アニメーション */
+@keyframes nodePop{
+  0%{opacity:0;transform:var(--tf) scale(.6)}
+  60%{opacity:1;transform:var(--tf) scale(1.06)}
+  100%{opacity:1;transform:var(--tf) scale(1)}
+}
+.node.pop{animation:nodePop .55s cubic-bezier(.2,.8,.3,1) both}
+@keyframes lineGrow{ from{stroke-dashoffset:1} to{stroke-dashoffset:0} }
+.wires .grow{stroke-dasharray:1;stroke-dashoffset:1;animation:lineGrow .7s ease-out forwards}
+.wires .dashed.grow{stroke-dasharray:1}
+@keyframes dotPop{ from{opacity:0;r:0} to{opacity:1} }
+.wires .join.pop{animation:dotPop .4s ease-out .5s both}
+
+/* 家系図から選んだときの生年月日欄 */
+.dob.locked input{color:var(--ink3);pointer-events:none}
+.dob.locked .tg{visibility:hidden}
+
+@media (max-width:640px){
+  #b-arrange svg,#b-arrange span{display:none}
+  #b-arrange .auto{display:inline;position:static;width:auto;height:auto;clip-path:none;overflow:visible}
+  #b-arrange{padding:0 8px}
+  #b-arrange .auto{font-size:10.5px}
+  .grp .btn{padding:0 8px}
+  .selbar{top:8px;max-width:calc(100vw - 20px)}
+  .selbar .who{height:32px;font-size:14px;padding:0 10px}
+  .selbar .lb{padding:0 8px;font-size:9px}
+  .tlbar{bottom:calc(10px + env(safe-area-inset-bottom));width:calc(100vw - 20px);flex-wrap:wrap;gap:8px;padding:8px}
+  .tl-year{width:auto;flex:1 1 auto;order:1}
+  .tlbar .btn.icon#tl-play{order:0}
+  #tl-close{order:2}
+  .tlbar input[type=range]{order:3;flex:1 1 100%}
+  .tl-speed{order:4;width:100%}
+  .tl-speed button{flex:1 1 0}
+  .canvas.tl .zoombox{display:none}
 }
