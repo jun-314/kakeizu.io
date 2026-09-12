@@ -23,8 +23,8 @@
     </div>
     <div class="grp" data-only="tree">
       <button class="btn" id="b-add" title="人物を追加"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M8 3v10M3 8h10"/></svg><span>人物</span></button>
-      <button class="btn" id="b-arrange" title="自動整列"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v3M3.5 8.5V7h9v1.5M3.5 8.5v2M8 8.5v2M12.5 8.5v2"/><rect x="6" y="1" width="4" height="2.4" rx=".4"/><rect x="1.6" y="11" width="3.8" height="2.4" rx=".4"/><rect x="6.1" y="11" width="3.8" height="2.4" rx=".4"/><rect x="10.6" y="11" width="3.8" height="2.4" rx=".4"/></svg><span>自動整列</span></button>
-      <button class="btn" id="b-fit" title="全体表示"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 5.5V2.5h3M14 5.5V2.5h-3M2 10.5v3h3M14 10.5v3h-3"/></svg><span>全体表示</span></button>
+      <button class="btn" id="b-arrange" title="自動整列"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M8 2v3M3.5 8.5V7h9v1.5M3.5 8.5v2M8 8.5v2M12.5 8.5v2"/><rect x="6" y="1" width="4" height="2.4" rx=".4"/><rect x="1.6" y="11" width="3.8" height="2.4" rx=".4"/><rect x="6.1" y="11" width="3.8" height="2.4" rx=".4"/><rect x="10.6" y="11" width="3.8" height="2.4" rx=".4"/></svg><span>自動整列</span><b class="auto">AUTO</b></button>
+      <button class="btn" id="b-tl" title="時系列で見る"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 12.5h12M3.2 12.5V9.4M6.4 12.5V6.2M9.6 12.5V8M12.8 12.5V3.6"/><path d="M3.2 9.4 6.4 6.2 9.6 8l3.2-4.4" stroke-dasharray="2 1.6"/></svg><span>時系列</span></button>
     </div>
     <div class="spacer"></div>
     <div class="grp" data-only="age">
@@ -43,6 +43,19 @@
       <div class="stage" id="stage">
         <svg class="wires" id="wires"></svg>
         <div id="nodes"></div>
+      </div>
+
+      <div class="selbar" id="selbar" hidden>
+        <span class="lb">選択中</span>
+        <button class="who" id="selbar-name" title="詳細を開く"></button>
+        <button class="x" id="selbar-x" title="選択を解除" aria-label="選択を解除">×</button>
+      </div>
+      <div class="tlbar" id="tlbar" hidden>
+        <button class="btn icon" id="tl-play" title="再生／停止"><svg class="i-play" viewBox="0 0 16 16"><path d="M4.5 2.8v10.4L13 8z"/></svg><svg class="i-pause" viewBox="0 0 16 16"><path d="M4 3h3v10H4zM9 3h3v10H9z"/></svg></button>
+        <div class="tl-year"><b id="tl-year">—</b><span id="tl-note"></span></div>
+        <input type="range" id="tl-range" min="0" max="1" step="1" value="0" aria-label="年">
+        <div class="tl-speed" id="tl-speed" role="group" aria-label="速さ"><button data-s="slow">遅</button><button data-s="normal" aria-pressed="true">普通</button><button data-s="fast">早</button></div>
+        <button class="btn icon" id="tl-close" title="時系列モードを終了" aria-label="終了">×</button>
       </div>
 
       <div class="zoombox">
