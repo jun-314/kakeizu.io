@@ -124,14 +124,16 @@ button,input,select,textarea{font:inherit;color:inherit}
 .g-male .sym .s{stroke:var(--male);fill:color-mix(in srgb,var(--male) 14%,transparent)}
 .g-female .sym .s{stroke:var(--female);fill:color-mix(in srgb,var(--female) 14%,transparent)}
 .g-other .sym .s{stroke:var(--other);fill:color-mix(in srgb,var(--other) 14%,transparent)}
-.node .body{min-width:0;flex:1 1 auto;display:flex;flex-direction:column;gap:calc(var(--fs)*.08)}
+.node .body{min-width:0;flex:1 1 auto;display:flex;flex-direction:column;gap:calc(var(--fs)*.08);
+  max-height:calc(var(--ch) - 8px);overflow:hidden}
 .node .nm{font-family:var(--ff-name);font-weight:600;font-size:calc(var(--fs)*1.65);line-height:1.18;
-  letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.node .maiden{font-size:calc(var(--fs)*.95);line-height:1.3;color:var(--ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  letter-spacing:.02em;white-space:normal;overflow-wrap:anywhere;word-break:break-word}
+.node .maiden{display:inline;font-family:var(--ff-ui);font-weight:500;font-size:calc(var(--fs)*.95);
+  letter-spacing:0;color:var(--ink3);margin-left:.45em;white-space:nowrap}
 .node .maiden i{font-style:normal;letter-spacing:.08em}
 .node .dt{font-family:var(--ff-num);font-size:calc(var(--fs)*1.08);line-height:1.3;color:var(--ink2);
-  font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.node .dt em{font-style:normal;color:var(--ink3)}
+  font-variant-numeric:tabular-nums;white-space:normal;overflow-wrap:anywhere}
+.node .dt em{font-style:normal;color:var(--ink3);white-space:nowrap}
 .node .tags{position:absolute;top:calc(var(--fs)*-.42);right:calc(var(--fs)*.5);display:flex;gap:3px}
 .tag{font-size:calc(var(--fs)*.66);line-height:1;padding:3px 5px;border-radius:2px;border:1px solid var(--line);
   background:var(--panel2);color:var(--ink3);font-weight:500;letter-spacing:.04em}

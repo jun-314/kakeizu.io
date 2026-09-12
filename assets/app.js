@@ -23,8 +23,8 @@ const esc = s => String(s==null?"":s).replace(/[&<>"']/g, m=>({"&":"&amp;","<":"
 const uid = p => (p||"x") + Math.random().toString(36).slice(2,9);
 const clamp = (v,a,b)=> v<a?a:v>b?b:v;
 const byId = id => S.people.find(p=>p.id===id) || null;
-/* カードは文字が収まる大きさに自動で広がる（文字倍率が1を超えた分だけ拡大） */
-const scl = ()=> Math.max(1, S.set.fontScale || 1);
+/* カードの枠は固定。文字倍率を上げても枠は変えず、収まらない文字は折り返す */
+const scl = ()=> 1;
 const cw = ()=> Math.round(BASE_W * scl());
 const ch = ()=> Math.round(BASE_H * scl());
 
@@ -693,8 +693,8 @@ function renderNodes(){
     }
     html += symbol(p.gender);
     html += '<div class="body">';
-    html += '<div class="nm">'+esc(fullName(p))+'</div>';
-    if(S.set.maiden && p.maiden) html += '<div class="maiden"><i>旧姓</i> '+esc(p.maiden)+'</div>';
+    html += '<div class="nm">'+esc(fullName(p))+
+            (S.set.maiden && p.maiden ? '<span class="maiden"><i>旧姓</i> '+esc(p.maiden)+'</span>' : '')+'</div>';
     const b = fmtDate(p.birth), d = fmtDate(p.death), ag = ageOf(p);
     const dead = isDead(p);
     let line = "";
@@ -1353,8 +1353,8 @@ function paneView(){
 
   pane.innerHTML =
     '<div class="sect"><h3>文字の大きさ</h3>'+
-      sl("s-font","文字の大きさ",0.75,3,0.05,S.set.fontScale,Math.round(S.set.fontScale*100)+"%")+
-      '<p class="note" style="margin-top:-2px;margin-bottom:8px">文字を大きくすると、収まるようにカードも自動で広がります。</p>'+
+      sl("s-font","文字の大きさ",0.75,2,0.05,S.set.fontScale,Math.round(S.set.fontScale*100)+"%")+
+      '<p class="note" style="margin-top:-2px;margin-bottom:8px">カードの枠は固定です。収まらない文字は折り返し、それでも入りきらない分は隠れます。</p>'+
       '<div class="mini"><button id="s-reset">標準に戻す</button></div></div>'+
     '<div class="sect"><h3>カードの表示</h3>'+
       '<label class="sw">性別で色分けする<input type="checkbox" id="v-tint"'+(S.set.tint?" checked":"")+'></label>'+
@@ -1487,6 +1487,17 @@ async function saveFile(filename, text, box){
 }
 
 /* ---------- SVG 書き出し ---------- */
+/* 全角≒1em・半角≒0.6em として幅を見積もり、収まるところで折り返す */
+function svgWrap(text, maxW, fontPx){
+  const lines = []; let cur = "", w = 0;
+  for(const ch of String(text)){
+    const cw = /[\x20-\x7e]/.test(ch) ? fontPx*0.6 : fontPx;
+    if(w + cw > maxW && cur){ lines.push(cur); cur = ""; w = 0; }
+    cur += ch; w += cw;
+  }
+  if(cur) lines.push(cur);
+  return lines.length ? lines : [""];
+}
 function buildSVG(){
   const W = cw(), H = ch(), F = 13*S.set.fontScale, pad = 40;
   const bb = bounds() || { x:0, y:0, w:200, h:100 };
@@ -1519,7 +1530,6 @@ function buildSVG(){
     const has2 = (S.set.maiden && p.maiden), b = fmtDate(p.birth), d2 = fmtDate(p.death), ag = ageOf(p);
     const gone = isDead(p);
     const sub = [];
-    if(has2) sub.push({ t:"旧姓 " + p.maiden, c: col.ink3 });
     const dates = (b||d2) ? ((b||"?") + (gone ? " – " + (d2||"?") : "")) : "";
     const agTx = (S.set.age && ag) ? ((ag.dead?"享年":"") + (ag.approx?"約":"") + ag.y + (ag.dead?"":"歳")) : "";
     if(gone){
@@ -1529,11 +1539,21 @@ function buildSVG(){
       const one = dates + (dates && agTx ? "  " : "") + agTx;
       if(one) sub.push({ t:one, c: col.ink2 });
     }
-    ty = H/2 - sub.length*F*0.72 + F*0.5;
-    s += '<text x="'+tx+'" y="'+ty.toFixed(1)+'" font-size="'+(F*1.65).toFixed(1)+'" font-weight="600" fill="'+col.ink+'" font-family="Hiragino Mincho ProN, Yu Mincho, serif">'+esc(fullName(p))+'</text>';
-    for(const row of sub){
-      ty += F*1.4;
-      s += '<text x="'+tx+'" y="'+ty.toFixed(1)+'" font-size="'+(F*1.08).toFixed(1)+'" fill="'+row.c+'">'+esc(row.t)+'</text>';
+    if(has2) sub.push({ t:"旧姓 " + p.maiden, c: col.ink3 });
+    /* 枠は固定なので、画面と同じく収まらない文字は折り返し、入りきらない行は省く */
+    const avail = W - tx - F*0.6;
+    const nmSize = F*1.65, subSize = F*1.08;
+    const rows = [];
+    svgWrap(fullName(p), avail, nmSize).forEach(t=> rows.push({ t:t, size:nmSize, lh:nmSize*1.18, c:col.ink, bold:true }));
+    for(const row of sub) svgWrap(row.t, avail, subSize).forEach(t=> rows.push({ t:t, size:subSize, lh:subSize*1.3, c:row.c }));
+    let total = rows.reduce((a,r)=> a + r.lh, 0);
+    while(rows.length > 1 && total > H - 6){ total -= rows.pop().lh; }
+    ty = H/2 - total/2;
+    for(const row of rows){
+      ty += row.lh;
+      s += '<text x="'+tx+'" y="'+(ty - row.lh*0.22).toFixed(1)+'" font-size="'+row.size.toFixed(1)+'"'+
+           (row.bold ? ' font-weight="600" font-family="Hiragino Mincho ProN, Yu Mincho, serif"' : '')+
+           ' fill="'+row.c+'">'+esc(row.t)+'</text>';
     }
     s += '</g>';
   }
